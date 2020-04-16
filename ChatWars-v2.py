@@ -50,12 +50,18 @@ class CreateClient(TelegramClient):
                 return await super().__call__(request, **kw)
         else:
             return await super().__call__(request, **kw)
+        
+    def __init__(self, **kwargs):
+        super().__init__(api_id=123456,
+                         api_hash='qwertyuiopasdfghjkl123456789',
+                         connection_retries=1000,
+                         **kwargs)
 
 
 sync.syncify(CreateClient)
 
 # user config
-client = CreateClient(session=Session_File, api_id=123456, api_hash='qwertyuiopasdfghjkl123456789').start()
+client = CreateClient(session=Session_File).start()
 Control_Channel = client.get_entity(Control_Channel_URL)
 ChatWars_Channel = client.get_entity('@chtwrsbot')
 
