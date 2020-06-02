@@ -3,6 +3,7 @@ from telethon.tl.functions.messages import SendMessageRequest
 from telethon.tl.functions.messages import GetBotCallbackAnswerRequest
 from datetime import datetime
 import random, re, asyncio, logging
+import json, urllib.request
 
 # logging.basicConfig(level=logging.DEBUG)
 
@@ -34,23 +35,26 @@ use_found_energy = False
 exhaust_energy = False
 exhaust_activity_reply_quests = False
 results = 0
+quest_return_json = None
 
 # user config
 Control_Channel_URL = 'https://t.me/joinchat/Fa7...'
 Session_File = 'Username'
+quest_return_url = 'https://raw.githubusercontent.com/TheRealNoob/TelegramBots/master/quests.json'
 
 
 # Method override on the Telegram client : Force a 1-5 sec delay on all outgoing messages to Chat Wars
 class CreateClient(TelegramClient):
     async def __call__(self, request, **kw):
         # print(request)
-        if (isinstance(request, SendMessageRequest) or isinstance(request, GetBotCallbackAnswerRequest)) and hasattr(request.peer, 'user_id') and request.peer.user_id == ChatWars_Channel.id:
+        if (isinstance(request, SendMessageRequest) or isinstance(request, GetBotCallbackAnswerRequest)) and hasattr(
+                request.peer, 'user_id') and request.peer.user_id == ChatWars_Channel.id:
             if bot_active:
                 await asyncio.sleep(random.randint(1, 5))
                 return await super().__call__(request, **kw)
         else:
             return await super().__call__(request, **kw)
-        
+
     def __init__(self, **kwargs):
         super().__init__(api_id=123456,
                          api_hash='qwertyuiopasdfghjkl123456789',
@@ -80,13 +84,13 @@ Foray is a dangerous activity. Someone can notice you and may beat you up. But i
 
 📯Arena [🔒]{0,1}
 Arena isn't a place for the weak. Here you fight against other players and if you stand victorious, you acquire precious experience."""
-reg_quests_arena_open = r"""🌲Forest 5min
+reg_quests_arena_open = r"""🌲Forest \d{1,2}min
 Many things can happen in the forest.
 
-🍄Swamp 6min
+🍄Swamp \d{1,2}min
 Who knows what is lurking in mud.
 
-🏔Mountain Valley 6min
+🏔Mountain Valley \d{1,2}min
 Watch out for landslides.
 
 🗡Foray 🔋🔋
@@ -180,6 +184,12 @@ def print_unhandled_error():
     print("{}   {} {} {}".format(datetime.now(), bot_active, current_activity, activity_counter))
 
 
+def refresh_quest_return_data():
+    global quest_return_json
+    json_text = urllib.request.urlopen(quest_return_url).read().decode('utf-8')
+    quest_return_json = json.loads(json_text)
+
+
 @client.on(events.NewMessage(chats=ChatWars_Channel, incoming=True))
 async def one(event):
     global bot_active, current_activity, activity_counter, start_event, arena_test_closed, use_found_energy, exhaust_activity_reply_quests, results
@@ -196,37 +206,42 @@ async def one(event):
                 else:
                     print("ERROR: Unhandled exception")
                     await start_event.reply("ERROR: Unhandled exception")
-                    await start_event.reply("Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active, current_activity, activity_counter))
+                    await start_event.reply(
+                        "Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active,
+                                                                                            current_activity,
+                                                                                            activity_counter))
                     await client.send_message(ChatWars_Channel, "⬅Back")
                     reset_status()
 
             # # # Valley Handlers # # #
 
-            # Left for Valley
-            if re.search(reg_valley_capture_time, event.raw_text):
-                results += 1
-                exhaust_activity_reply_quests = False
-                quest_return_time = int(re.findall(reg_valley_capture_time, event.raw_text, re.MULTILINE)[0]) * 60 + 10
-                activity_counter -= 1
-                print_unhandled_error()
-                await asyncio.sleep(quest_return_time)
-                if activity_counter > 0:
-                    sleep_time = random.randint(0, 300)
-                    print("{} sleeping {}".format(datetime.now(), sleep_time))
-                    await asyncio.sleep(sleep_time)
-                    if bot_active and current_activity == "Valley":
-                        print("{} Sending quests command".format(datetime.now(), activity_counter))
-                        if random.randint(1, 3) == 1:
+            # Return from Valley
+            responses = quest_return_json["Valley"]["Successful"] + quest_return_json["Valley"]["Unsuccessful"]
+            for x in responses:
+                if x in event.raw_text:
+                    results += 1
+                    exhaust_activity_reply_quests = False
+                    activity_counter -= 1
+                    print_unhandled_error()
+                    if activity_counter > 0:
+                        sleep_time = random.randint(5, 300)
+                        print("{} sleeping {}".format(datetime.now(), sleep_time))
+                        await asyncio.sleep(sleep_time)
+                        if bot_active and current_activity == "Valley":
+                            print("{} Sending quests command".format(datetime.now()))
+                            if random.randint(1, 3) == 1:
+                                await client.send_message(ChatWars_Channel, "🏅Me")
+                                await asyncio.sleep(random.randint(3, 5))
+                            await client.send_message(ChatWars_Channel, "🗺Quests")
+                    elif activity_counter == 0:
+                        if exhaust_energy:
+                            exhaust_activity_reply_quests = True
                             await client.send_message(ChatWars_Channel, "🏅Me")
-                        await client.send_message(ChatWars_Channel, "🗺Quests")
-                elif activity_counter == 0:
-                    if exhaust_energy:
-                        exhaust_activity_reply_quests = True
-                        await client.send_message(ChatWars_Channel, "🏅Me")
-                    else:
-                        print("{} valley done".format(datetime.now(), quest_return_time))
-                        await start_event.reply("Done\nQuests Completed: {}".format(results))
-                        reset_status()
+                        else:
+                            print("{} valley done".format(datetime.now()))
+                            await start_event.reply("Done\nQuests Completed: {}".format(results))
+                            reset_status()
+
 
             # not enough stamina
             if re.search(reg_error_not_enough_stamina, event.raw_text):
@@ -252,37 +267,42 @@ async def one(event):
                 else:
                     print("ERROR: Unhandled exception")
                     await start_event.reply("ERROR: Unhandled exception")
-                    await start_event.reply("Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active, current_activity, activity_counter))
+                    await start_event.reply(
+                        "Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active,
+                                                                                            current_activity,
+                                                                                            activity_counter))
                     await client.send_message(ChatWars_Channel, "⬅Back")
                     reset_status()
 
             # # # Swamp Handlers # # #
 
-            # Left for swamp
-            if re.search(reg_swamp_capture_time, event.raw_text):
-                results += 1
-                exhaust_activity_reply_quests = False
-                quest_return_time = int(re.findall(reg_swamp_capture_time, event.raw_text, re.MULTILINE)[0]) * 60 + 10
-                activity_counter -= 1
-                print_unhandled_error()
-                await asyncio.sleep(quest_return_time)
-                if activity_counter > 0:
-                    sleep_time = random.randint(0, 300)
-                    print("{} sleeping {}".format(datetime.now(), sleep_time))
-                    await asyncio.sleep(sleep_time)
-                    if bot_active and current_activity == "Swamp":
-                        print("{} Sending quests command".format(datetime.now()))
-                        if random.randint(1, 3) == 1:
+            # Return from Swamp
+            responses = quest_return_json["Swamp"]["Successful"] + quest_return_json["Swamp"]["Unsuccessful"]
+            for x in responses:
+                if x in event.raw_text:
+                    results += 1
+                    exhaust_activity_reply_quests = False
+                    activity_counter -= 1
+                    print_unhandled_error()
+                    if activity_counter > 0:
+                        sleep_time = random.randint(5, 300)
+                        print("{} sleeping {}".format(datetime.now(), sleep_time))
+                        await asyncio.sleep(sleep_time)
+                        if bot_active and current_activity == "Swamp":
+                            print("{} Sending quests command".format(datetime.now()))
+                            if random.randint(1, 3) == 1:
+                                await client.send_message(ChatWars_Channel, "🏅Me")
+                                await asyncio.sleep(random.randint(3, 5))
+                            await client.send_message(ChatWars_Channel, "🗺Quests")
+                    elif activity_counter == 0:
+                        if exhaust_energy:
+                            exhaust_activity_reply_quests = True
                             await client.send_message(ChatWars_Channel, "🏅Me")
-                        await client.send_message(ChatWars_Channel, "🗺Quests")
-                elif activity_counter == 0:
-                    if exhaust_energy:
-                        exhaust_activity_reply_quests = True
-                        await client.send_message(ChatWars_Channel, "🏅Me")
-                    else:
-                        print("{} swamp done".format(datetime.now(), quest_return_time))
-                        await start_event.reply("Done\nQuests Completed: {}".format(results))
-                        reset_status()
+                        else:
+                            print("{} swamp done".format(datetime.now()))
+                            await start_event.reply("Done\nQuests Completed: {}".format(results))
+                            reset_status()
+
 
             # not enough stamina
             if re.search(reg_error_not_enough_stamina, event.raw_text):
@@ -313,16 +333,19 @@ async def one(event):
                     else:
                         print("ERROR: Unhandled exception")
                         await start_event.reply("ERROR: Unhandled exception")
-                        await start_event.reply("Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active, current_activity, activity_counter))
+                        await start_event.reply(
+                            "Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active,
+                                                                                                current_activity,
+                                                                                                activity_counter))
                         await client.send_message(ChatWars_Channel, "⬅Back")
                         reset_status()
                 # if arena is closed:
                 if re.search(reg_quests_arena_locked, event.raw_text):
                     # arena is closed for one of three reasons:
-                        # 1. war less < 2 hours
-                        # 1.1. arena ia already completed
-                        # 2. arena closed while we were working on it
-                        # else: unhandled
+                    # 1. war less < 2 hours
+                    # 1.1. arena ia already completed
+                    # 2. arena closed while we were working on it
+                    # else: unhandled
                     # if unknown count remaining
                     if activity_counter is None:
                         # Either war in < 2 hours OR arena is already completed
@@ -332,12 +355,16 @@ async def one(event):
                     elif activity_counter > 0:
                         await client.send_message(ChatWars_Channel, "⬅Back")
                         await client.send_message(ChatWars_Channel, "/g_def")
-                        await start_event.reply("ERROR: Arena closed before finishing.  Completed: {}/5".format(activity_counter))
+                        await start_event.reply(
+                            "ERROR: Arena closed before finishing.  Completed: {}/5".format(activity_counter))
                         reset_status()
                     else:
                         print("ERROR: Unhandled exception")
                         await start_event.reply("ERROR: Unhandled exception")
-                        await start_event.reply("Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active, current_activity, activity_counter))
+                        await start_event.reply(
+                            "Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active,
+                                                                                                current_activity,
+                                                                                                activity_counter))
                         await client.send_message(ChatWars_Channel, "⬅Back")
                         reset_status()
             # inside arena command
@@ -361,7 +388,10 @@ async def one(event):
                     elif activity_counter == 5:
                         print("ERROR: Unhandled exception")
                         await start_event.reply("ERROR: Unhandled exception")
-                        await start_event.reply("Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active, current_activity, activity_counter))
+                        await start_event.reply(
+                            "Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active,
+                                                                                                current_activity,
+                                                                                                activity_counter))
                         await client.send_message(ChatWars_Channel, "⬅Back")
                         reset_status()
             # arena finished
@@ -439,6 +469,7 @@ async def one(event):
                 await event.reply("ERROR: Bot already active")
             elif not bot_active:
                 reset_status()
+                refresh_quest_return_data()
                 bot_active = True
                 current_activity = "Valley"
                 activity_counter = user_input
@@ -453,6 +484,7 @@ async def one(event):
             await event.reply("ERROR: Bot already active")
         elif not bot_active:
             reset_status()
+            refresh_quest_return_data()
             bot_active = True
             current_activity = "Valley"
             # activity_counter = 1
@@ -470,6 +502,7 @@ async def one(event):
                 await event.reply("ERROR: Bot already active")
             elif not bot_active:
                 reset_status()
+                refresh_quest_return_data()
                 bot_active = True
                 current_activity = "Swamp"
                 activity_counter = user_input
@@ -484,6 +517,7 @@ async def one(event):
             await event.reply("ERROR: Bot already active")
         elif not bot_active:
             reset_status()
+            refresh_quest_return_data()
             bot_active = True
             current_activity = "Swamp"
             # activity_counter = 1
@@ -499,6 +533,7 @@ async def one(event):
             await event.reply("ERROR: Bot already active")
         elif not bot_active:
             reset_status()
+            refresh_quest_return_data()
             bot_active = True
             current_activity = "Arena"
             start_event = event
@@ -510,9 +545,14 @@ async def one(event):
     elif re.search("^/[p|P]ing$", event.raw_text):
         await event.reply("Pong")
     elif re.search("^/[s|S]tatus$", event.raw_text):
-        await event.reply("Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active, current_activity, activity_counter))
+        await event.reply(
+            "Bot active: {}\nCurrent activity: {}\nActivity counter: {}".format(bot_active, current_activity,
+                                                                                activity_counter))
     elif re.search("^/[d|D]ebug$", event.raw_text):
-        await event.reply("Bot active: {}\nCurrent activity: {}\nActivity counter: {}\nstart_event: {}\narena_test_closed: {}\nuse_found_energy: {}\nexhaust_energy: {}\nexhaust_activity_reply_quests: {}".format(bot_active, current_activity, activity_counter, start_event, arena_test_closed, use_found_energy, exhaust_energy, exhaust_activity_reply_quests))
+        await event.reply(
+            "Bot active: {}\nCurrent activity: {}\nActivity counter: {}\nstart_event: {}\narena_test_closed: {}\nuse_found_energy: {}\nexhaust_energy: {}\nexhaust_activity_reply_quests: {}".format(
+                bot_active, current_activity, activity_counter, start_event, arena_test_closed, use_found_energy,
+                exhaust_energy, exhaust_activity_reply_quests))
     elif re.search("^/[h|H]elp$", event.raw_text):
         await event.reply(help_message)
 
@@ -523,4 +563,5 @@ async def one(event):
 
 # run_forever
 print("started")
+refresh_quest_return_data()
 asyncio.get_event_loop().run_forever()
