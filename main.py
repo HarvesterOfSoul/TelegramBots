@@ -1,13 +1,15 @@
 from telethon import TelegramClient, events, sync
-from telethon.tl.functions.messages import SendMessageRequest
-from telethon.tl.functions.messages import GetBotCallbackAnswerRequest
+from telethon.tl.functions.messages import SendMessageRequest, GetBotCallbackAnswerRequest
 from datetime import datetime
-import random, re, asyncio, logging
-import json, urllib.request
-import config, regex
+import random, re, asyncio, json, logging, configparser
+import urllib.request
+import regex
 
 # logging.basicConfig(level=logging.DEBUG)
 
+# read config.ini
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 class CreateClient(TelegramClient):
     total_arena = 0
@@ -25,9 +27,9 @@ class CreateClient(TelegramClient):
             return await super().__call__(request, **kwargs)
 
     def __init__(self, **kwargs):
-        super().__init__(api_id=config.api_id,
-                         api_hash=config.api_hash,
-                         connection_retries=config.connection_retries,
+        super().__init__(api_id=config['TelegramApi']['api_id'],
+                         api_hash=config['TelegramApi']['api_hash'],
+                         connection_retries=config['TelegramApi']['connection_retries'],
                          **kwargs)
 
         self.bot_active: bool = False
@@ -59,11 +61,9 @@ class CreateClient(TelegramClient):
         self.bot_active = bool_
 
 
+# setup
 sync.syncify(CreateClient)
-
-# user config
-client = CreateClient(session=config.Session_File).start()
-Control_Channel = client.get_entity(config.Control_Channel_URL)
+client = CreateClient(session=config['User']['session']).start()
 ChatWars_Channel = client.get_entity('@chtwrsbot')
 
 
@@ -74,7 +74,7 @@ def print_unhandled_error():
 
 
 def refresh_quest_return_data():
-    json_text = urllib.request.urlopen(config.quest_return_url).read().decode('utf-8')
+    json_text = urllib.request.urlopen(config['SharedResources']['quest_return_url']).read().decode('utf-8')
     client.quest_return_json = json.loads(json_text)
 
 
@@ -344,7 +344,7 @@ async def cw_logic(event):
                 client.reset_status()
 
 
-@client.on(events.NewMessage(chats=Control_Channel, outgoing=True, forwards=False))
+@client.on(events.NewMessage(chats=config['User']['control_channel_url'], outgoing=True, forwards=False))
 async def control_chat(event):
     # valley given number of times
     if re.search(r"^/[v|V]alley (\d{1,2})\+?$", event.raw_text):
