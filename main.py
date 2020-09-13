@@ -1,9 +1,14 @@
 from telethon import TelegramClient, events, sync
 from telethon.tl.functions.messages import SendMessageRequest, GetBotCallbackAnswerRequest
 from datetime import datetime
+
 import random, re, asyncio, json, logging, configparser
 import urllib.request
+
+# package modules
+from classes.CreateSession import CreateBot, CreateClient
 import regex
+
 
 # logging.basicConfig(level=logging.DEBUG)
 
@@ -11,71 +16,11 @@ import regex
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-class CreateClient(TelegramClient):
-    total_arena = 0
-    total_swamp = 0
-    total_valley = 0
-
-    async def __call__(self, request, **kwargs):
-        # print(request)
-        if (isinstance(request, SendMessageRequest) or isinstance(request, GetBotCallbackAnswerRequest)) and hasattr(
-                request.peer, 'user_id') and request.peer.user_id == ChatWars_Channel.id:
-            if client.is_bot_active():
-                await asyncio.sleep(random.randint(1, 5))
-                return await super().__call__(request, **kwargs)
-        else:
-            return await super().__call__(request, **kwargs)
-
-    def __init__(self, **kwargs):
-        super().__init__(api_id=config['TelegramApi']['api_id'],
-                         api_hash=config['TelegramApi']['api_hash'],
-                         connection_retries=config['TelegramApi']['connection_retries'],
-                         **kwargs)
-
-        self.bot_active: bool = False
-        self.current_activity = None  # Valley / Swamp / Arena
-        self.activity_counter = None
-        self.start_event = None
-        self.arena_test_closed = None
-        self.use_found_energy = False
-        self.exhaust_energy = False
-        self.exhaust_activity_reply_quests = False
-        self.results = 0
-        self.quest_return_json = None
-
-    def reset_status(self):
-        self.set_bot_active(False)
-        self.current_activity = None
-        self.activity_counter = None
-        self.start_event = None
-        self.arena_test_closed = None
-        self.use_found_energy = False
-        self.exhaust_energy = False
-        self.exhaust_activity_reply_quests = False
-        self.results = 0
-
-    def is_bot_active(self) -> bool:
-        return self.bot_active
-
-    def set_bot_active(self, bool_: bool):
-        self.bot_active = bool_
-
 
 # setup
 sync.syncify(CreateClient)
 client = CreateClient(session=config['User']['session']).start()
 ChatWars_Channel = client.get_entity('@chtwrsbot')
-
-
-
-
-def print_unhandled_error():
-    print("{}   {} {} {}".format(datetime.now(), client.is_bot_active(), client.current_activity, client.activity_counter))
-
-
-def refresh_quest_return_data():
-    json_text = urllib.request.urlopen(config['SharedResources']['quest_return_url']).read().decode('utf-8')
-    client.quest_return_json = json.loads(json_text)
 
 
 @client.on(events.NewMessage(chats=ChatWars_Channel, incoming=True))
@@ -85,7 +30,6 @@ async def cw_logic(event):
         if client.current_activity == "Valley":
             # inside quest command
             if re.search(regex.quests, event.raw_text):
-                print_unhandled_error()
                 if client.activity_counter > 0:
                     print("{}   sending valley command".format(datetime.now()))
                     await event.click(text="⛰️Valley")
@@ -108,7 +52,6 @@ async def cw_logic(event):
                     client.results += 1
                     client.exhaust_activity_reply_quests = False
                     client.activity_counter -= 1
-                    print_unhandled_error()
                     if client.activity_counter > 0:
                         sleep_time = random.randint(5, 300)
                         print("{} sleeping {}".format(datetime.now(), sleep_time))
@@ -146,7 +89,6 @@ async def cw_logic(event):
         elif client.current_activity == "Swamp":
             # inside quest command
             if re.search(regex.quests, event.raw_text):
-                print_unhandled_error()
                 if client.activity_counter > 0:
                     print("{}   sending swamp command".format(datetime.now()))
                     await event.click(text="🍄Swamp")
@@ -169,7 +111,6 @@ async def cw_logic(event):
                     client.results += 1
                     client.exhaust_activity_reply_quests = False
                     client.activity_counter -= 1
-                    print_unhandled_error()
                     if client.activity_counter > 0:
                         sleep_time = random.randint(5, 300)
                         print("{} sleeping {}".format(datetime.now(), sleep_time))
@@ -354,7 +295,7 @@ async def control_chat(event):
                 await event.reply("ERROR: Bot already active")
             elif not client.is_bot_active():
                 client.reset_status()
-                refresh_quest_return_data()
+                client.refresh_quest_return_data()
                 client.set_bot_active(True)
                 client.current_activity = "Valley"
                 client.activity_counter = user_input
@@ -369,7 +310,7 @@ async def control_chat(event):
             await event.reply("ERROR: Bot already active")
         elif not client.is_bot_active():
             client.reset_status()
-            refresh_quest_return_data()
+            client.refresh_quest_return_data()
             client.set_bot_active(True)
             client.current_activity = "Valley"
             # client.activity_counter = 1
@@ -387,7 +328,7 @@ async def control_chat(event):
                 await event.reply("ERROR: Bot already active")
             elif not client.is_bot_active():
                 client.reset_status()
-                refresh_quest_return_data()
+                client.refresh_quest_return_data()
                 client.set_bot_active(True)
                 client.current_activity = "Swamp"
                 client.activity_counter = user_input
@@ -402,7 +343,7 @@ async def control_chat(event):
             await event.reply("ERROR: Bot already active")
         elif not client.is_bot_active():
             client.reset_status()
-            refresh_quest_return_data()
+            client.refresh_quest_return_data()
             client.set_bot_active(True)
             client.current_activity = "Swamp"
             # client.activity_counter = 1
@@ -418,7 +359,7 @@ async def control_chat(event):
             await event.reply("ERROR: Bot already active")
         elif not client.is_bot_active():
             client.reset_status()
-            refresh_quest_return_data()
+            client.refresh_quest_return_data()
             client.set_bot_active(True)
             client.current_activity = "Arena"
             client.start_event = event
@@ -448,5 +389,4 @@ async def control_chat(event):
 
 # run_forever
 print("started")
-refresh_quest_return_data()
 asyncio.get_event_loop().run_forever()
