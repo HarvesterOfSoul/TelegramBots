@@ -76,7 +76,7 @@ Many things can happen in the forest.
 🍄Swamp \d{1,2}min
 Who knows what is lurking in mud.
 
-🏔Mountain Valley \d{1,2}min
+🏔Mountain Valley \d{1,2}min(?: 🔥){0,1}
 Watch out for landslides.
 
 🗡Foray 🔋🔋
